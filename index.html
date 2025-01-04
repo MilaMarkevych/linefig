@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Expenditure Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            font-size: 19px;
+        }
+        .controls {
+            margin-top: -20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 10px;
+        }
+        button {
+            padding: 8px 19px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 19px;
+            min-width: 40px;
+        }
+        button.active {
+            background-color: #3B82F6;
+            color: white;
+        }
+        button:not(.active) {
+            background-color: #E5E7EB;
+        }
+        button:hover:not(.active) {
+            background-color: #D1D5DB;
+        }
+        .chart-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0px 0px rgba(0,0,0,0.1);
+            width: 80%;
+            height: 600px;
+            box-sizing: border-box;
+	    margin: 0 auto;
+        }
+        .line {
+            fill: none;
+            stroke-width: 2;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .line.inactive {
+            opacity: 0.15;
+        }
+        .line.selected {
+            stroke-width: 4;
+        }
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            pointer-events: none;
+            font-size: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .tooltip-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+        .title {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+            color: #1a1a1a;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="title">Expenditures on Select Goods and Services (1989=100)</h1>
+    <div class="chart-container" id="chart"></div>
+    <div class="controls" id="columnButtons"></div>
+
+    <script>
+        const rawData = `year	ucc	cost_new
+1989	290410	1
+1989	430110	1
+1989	430120	1
+1989	560110	1
+1989	620410	1
+1989	640130	1
+1989	680110	1
+1989	690111	1
+1989	790410	1
+1990	290410	1.158547
+1990	430110	1.028743
+1990	430120	.9063596
+1990	560110	1.143593
+1990	620410	1.079375
+1990	640130	.6561049
+1990	680110	.905646
+1990	690111	1.012643
+1990	790410	.9779416
+1991	290410	1.462161
+1991	430110	.8457572
+1991	430120	1.072423
+1991	560110	1.047799
+1991	620410	1.460292
+1991	640130	.8201315
+1991	680110	.7773676
+1991	690111	1.409917
+1991	790410	.9945216
+1992	290410	1.243534
+1992	430110	.9675272
+1992	430120	1.137206
+1992	560110	.9796918
+1992	620410	1.180073
+1992	640130	.3809088
+1992	680110	.8445134
+1992	690111	1.271379
+1992	790410	1.008775
+1993	290410	1.771754
+1993	430110	.9583998
+1993	430120	1.069447
+1993	560110	1.072567
+1993	620410	1.276525
+1993	640130	.4387334
+1993	680110	.9784194
+1993	690111	1.738062
+1993	790410	1.062769
+1994	290410	1.665581
+1994	430110	1.075015
+1994	430120	.9933661
+1994	560110	1.096581
+1994	620410	1.580667
+1994	640130	.7915519
+1994	680110	1.17475
+1994	690111	2.869821
+1994	790410	1.1947
+1995	290410	1.328054
+1995	430110	.8372174
+1995	430120	.791918
+1995	560110	.9164883
+1995	620410	1.81103
+1995	640130	.6629849
+1995	680110	.8536671
+1995	690111	2.863793
+1995	790410	1.114037
+1996	290410	1.376304
+1996	430110	.8419374
+1996	430120	1.226675
+1996	560110	.9090827
+1996	620410	1.419531
+1996	640130	1.182501
+1996	680110	.9909874
+1996	690111	3.465648
+1996	790410	1.232168
+1997	290410	1.391207
+1997	430110	.975785
+1997	430120	1.189855
+1997	560110	.9152616
+1997	620410	1.698749
+1997	640130	.985278
+1997	680110	1.440806
+1997	690111	3.92997
+1997	790410	1.301707
+1998	290410	1.498715
+1998	430110	.8870754
+1998	430120	1.094045
+1998	560110	.9433563
+1998	620410	1.438328
+1998	640130	1.023638
+1998	680110	1.158828
+1998	690111	3.976371
+1998	790410	1.376078
+1999	290410	1.618869
+1999	430110	.8651282
+1999	430120	1.089152
+1999	560110	.8243543
+1999	620410	1.930662
+1999	640130	1.282689
+1999	680110	1.136831
+1999	690111	4.129174
+1999	790410	1.371543
+2000	290410	1.335587
+2000	430110	.923961
+2000	430120	1.00003
+2000	560110	.8121703
+2000	620410	1.602108
+2000	640130	.8427433
+2000	680110	1.107235
+2000	690111	4.083452
+2000	790410	1.415504
+2001	290410	1.419929
+2001	430110	.6551422
+2001	430120	.9301724
+2001	560110	.8089846
+2001	620410	1.808723
+2001	640130	1.504437
+2001	680110	1.088236
+2001	690111	3.069663
+2001	790410	1.279322
+2002	290410	1.691741
+2002	430110	.6245254
+2002	430120	.9513568
+2002	560110	.9606176
+2002	620410	1.855384
+2002	640130	1.160843
+2002	680110	1.45749
+2002	690111	3.052908
+2002	790410	1.265345
+2003	290410	1.578568
+2003	430110	.8091766
+2003	430120	1.143137
+2003	560110	1.00393
+2003	620410	2.402107
+2003	640130	1.941764
+2003	680110	1.298455
+2003	690111	3.248871
+2003	790410	1.579883
+2004	290410	1.327543
+2004	430110	.819654
+2004	430120	1.158374
+2004	560110	1.034812
+2004	620410	2.340383
+2004	640130	2.058948
+2004	680110	1.454045
+2004	690111	3.330564
+2004	790410	1.711541
+2005	290410	1.684175
+2005	430110	1.345347
+2005	430120	1.690481
+2005	560110	1.226918
+2005	620410	3.213201
+2005	640130	1.920535
+2005	680110	1.630827
+2005	690111	3.767132
+2005	790410	1.919474
+2006	290410	1.504113
+2006	430110	.9659197
+2006	430120	1.313615
+2006	560110	1.211397
+2006	620410	3.25293
+2006	640130	1.914999
+2006	680110	1.706975
+2006	690111	3.629062
+2006	790410	1.813557
+2007	290410	1.174299
+2007	430110	.7666317
+2007	430120	1.215801
+2007	560110	1.202176
+2007	620410	2.746401
+2007	640130	1.679706
+2007	680110	1.828667
+2007	690111	3.624669
+2007	790410	3.053071
+2008	290410	1.021077
+2008	430110	1.114673
+2008	430120	1.088284
+2008	560110	1.31128
+2008	620410	3.336327
+2008	640130	2.424098
+2008	680110	1.667137
+2008	690111	3.464611
+2008	790410	2.699517
+2009	290410	.8688865
+2009	430110	.7717203
+2009	430120	.9053518
+2009	560110	1.386257
+2009	620410	3.837997
+2009	640130	2.87606
+2009	680110	1.310146
+2009	690111	3.779379
+2009	790410	2.544134
+2010	290410	1.038821
+2010	430110	1.029652
+2010	430120	.9490322
+2010	560110	1.209681
+2010	620410	3.451613
+2010	640130	2.808896
+2010	680110	1.430645
+2010	690111	3.169738
+2010	790410	2.445493
+2011	290410	.8720394
+2011	430110	.6326653
+2011	430120	.6544535
+2011	560110	1.222093
+2011	620410	3.265756
+2011	640130	2.855112
+2011	680110	1.356707
+2011	690111	3.49513
+2011	790410	2.537593
+2012	290410	1.079529
+2012	430110	.6578782
+2012	430120	1.005805
+2012	560110	1.451671
+2012	620410	4.350736
+2012	640130	2.651829
+2012	680110	1.581129
+2012	690111	3.587689
+2012	790410	2.73186
+2013	290410	.8919533
+2013	430110	.5064247
+2013	430120	.7319042
+2013	560110	1.346739
+2013	620410	3.967324
+2013	640130	4.070131
+2013	680110	1.268801
+2013	690111	2.982599
+2013	790410	2.702062
+2014	290410	.8665581
+2014	430110	.6315316
+2014	430120	.664538
+2014	560110	1.144433
+2014	620410	3.168557
+2014	640130	2.871594
+2014	680110	1.242582
+2014	690111	2.795241
+2014	790410	2.596743
+2015	290410	1.372562
+2015	430110	.8164998
+2015	430120	.8769147
+2015	560110	1.239075
+2015	620410	4.314733
+2015	640130	2.264403
+2015	680110	1.670633
+2015	690111	2.869093
+2015	790410	3.093602
+2016	290410	1.201945
+2016	430110	.7500469
+2016	430120	1.302276
+2016	560110	1.647104
+2016	620410	4.657079
+2016	640130	3.21454
+2016	680110	1.751748
+2016	690111	3.156299
+2016	790410	3.362167
+2017	290410	1.172233
+2017	430110	.8473644
+2017	430120	.8255957
+2017	560110	1.52476
+2017	620410	4.777575
+2017	640130	4.170956
+2017	680110	1.104478
+2017	690111	2.951003
+2017	790410	3.377104
+2018	290410	1.250801
+2018	430110	.8819325
+2018	430120	.9738179
+2018	560110	1.542805
+2018	620410	5.787955
+2018	640130	7.678702
+2018	680110	1.40839
+2018	690111	3.414247
+2018	790410	3.654898
+2019	290410	1.77791
+2019	430110	.9700336
+2019	430120	1.180163
+2019	560110	1.532382
+2019	620410	6.229959
+2019	640130	6.51983
+2019	680110	1.555496
+2019	690111	3.342706
+2019	790410	3.751811
+2020	290410	1.459918
+2020	430110	.6639706
+2020	430120	.7166407
+2020	560110	1.262982
+2020	620410	4.944496
+2020	640130	5.65671
+2020	680110	1.340328
+2020	690111	5.080503
+2020	790410	3.167497
+2021	290410	1.789929
+2021	430110	1.032911
+2021	430120	1.360286
+2021	560110	1.85899
+2021	620410	6.704854
+2021	640130	7.381196
+2021	680110	2.008918
+2021	690111	5.112875
+2021	790410	4.061551`;
+
+        const columns = [
+            { 
+                name: '1', 
+                lines: [
+                    { id: '790410', name: 'Restaurants', color: '#E63946' },    // Bright red
+                    { id: '640130', name: 'Haircuts', color: '#4361EE' },       // Vibrant blue
+                    { id: '620410', name: 'Pet services', color: '#FFB703' }    // Golden yellow
+                ]
+            },
+            { 
+                name: '2', 
+                lines: [
+                    { id: '680110', name: 'Legal services', color: '#2A9D8F' }, // Teal
+                    { id: '560110', name: 'Physician services', color: '#9D4EDD' }, // Purple
+                    { id: '690111', name: 'Computers & IT', color: '#A4292E' }  // Coral
+                ]
+            },
+            { 
+                name: '3', 
+                lines: [
+                    { id: '430120', name: 'Jewelry', color: '#38B000' },        // Bright green
+                    { id: '430110', name: 'Watches', color: '#FF7B00' },        // Orange
+                    { id: '290410', name: 'Furniture', color: '#6C757D' }       // Gray
+                ]
+            }
+        ];
+
+        let selectedColumn = null;
+        let selectedLines = new Set();
+        let data = [];
+
+        // Create buttons
+        const buttonContainer = document.getElementById('columnButtons');
+        columns.forEach(column => {
+            const button = document.createElement('button');
+            button.textContent = null;
+            button.onclick = () => toggleColumn(column.name);
+            buttonContainer.appendChild(button);
+        });
+
+        function toggleColumn(columnName) {
+            if (selectedColumn === columnName) {
+                selectedColumn = null;
+                selectedLines.clear();
+            } else {
+                selectedColumn = columnName;
+                selectedLines.clear();
+                const column = columns.find(col => col.name === columnName);
+                if (column) {
+                    column.lines.forEach(line => selectedLines.add(line.id));
+                }
+            }
+            updateButtonStyles();
+            updateLineStyles();
+        }
+
+        function toggleLine(lineId) {
+            if (selectedLines.has(lineId)) {
+                selectedLines.delete(lineId);
+            } else {
+                selectedLines.add(lineId);
+            }
+            updateLineStyles();
+        }
+
+        function updateButtonStyles() {
+            document.querySelectorAll('button').forEach(button => {
+                button.classList.toggle('active', button.textContent === selectedColumn);
+            });
+        }
+
+        function updateLineStyles() {
+            d3.selectAll('.line')
+                .classed('inactive', d => {
+                    if (selectedLines.size > 0) {
+                        return !selectedLines.has(d[0].ucc);
+                    }
+                    if (!selectedColumn) return false;
+                    const columnLines = columns.find(col => col.name === selectedColumn)?.lines.map(l => l.id) || [];
+                    return !columnLines.includes(d[0].ucc);
+                })
+                .classed('selected', d => selectedLines.has(d[0].ucc));
+        }
+
+        function processData() {
+            const parsed = Papa.parse(rawData, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: true,
+                delimiter: '\t'
+            });
+
+            data = _.chain(parsed.data)
+                .groupBy('year')
+                .map((yearData, year) => ({
+                    year: parseInt(year),
+                    ..._.chain(yearData)
+                        .keyBy('ucc')
+                        .mapValues('cost_new')
+                        .value()
+                }))
+                .sortBy('year')
+                .value();
+
+            createChart();
+        }
+
+        function createChart() {
+            const margin = {top: 20, right: 40, bottom: 120, left: 60};
+            const container = document.querySelector('.chart-container');
+            const width = container.clientWidth - margin.left - margin.right - 40;
+            const height = container.clientHeight - margin.top - margin.bottom - 40;
+
+            d3.select('#chart').selectAll('*').remove();
+
+            const svg = d3.select('#chart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleLinear()
+                .domain(d3.extent(data, d => d.year))
+                .range([0, width]);
+
+            const y = d3.scaleLinear()
+                .domain([0, 8])
+                .range([height, 0]);
+
+            // Add axes with larger font size
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d3.format('d')))
+                .style('font-size', '19px');
+
+            svg.append('g')
+                .call(d3.axisLeft(y))
+                .style('font-size', '19px');
+
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .style('font-size', '19px')
+                .text('Expenditure (1989=100)');
+
+            const tooltip = d3.select('body')
+                .append('div')
+                .attr('class', 'tooltip')
+                .style('opacity', 0);
+
+            const tooltipLine = svg.append('line')
+                .style('stroke', '#ddd')
+                .style('stroke-width', 1)
+                .style('stroke-dasharray', '3,3')
+                .style('opacity', 0);
+
+            // Create lines
+            columns.forEach(column => {
+                column.lines.forEach(lineConfig => {
+                    const lineData = data.map(d => ({
+                        year: d.year,
+                        value: d[lineConfig.id],
+                        ucc: lineConfig.id,
+                        name: lineConfig.name
+                    })).filter(d => d.value != null);
+
+                    const line = d3.line()
+                        .defined(d => !isNaN(d.value))
+                        .x(d => x(d.year))
+                        .y(d => y(d.value));
+
+                    svg.append('path')
+                        .datum(lineData)
+                        .attr('class', 'line')
+                        .attr('d', line)
+                        .style('stroke', lineConfig.color)
+                        .style('cursor', 'pointer')
+                        .on('click', function() {
+                            selectedColumn = null;
+                            updateButtonStyles();
+                            toggleLine(lineConfig.id);
+                        });
+                });
+            });
+
+            const overlay = svg.append('rect')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'none')
+                .attr('pointer-events', 'all');
+
+            overlay
+                .on('mousemove', function(event) {
+                    const mouseX = d3.pointer(event)[0];
+                    const xYear = Math.round(x.invert(mouseX));
+                    const yearData = data.find(d => d.year === xYear);
+
+                    if (yearData) {
+                        tooltipLine
+                            .attr('x1', mouseX)
+                            .attr('x2', mouseX)
+                            .attr('y1', 0)
+                            .attr('y2', height)
+                            .style('opacity', 1);
+
+                        let tooltipContent = `<div class="tooltip-header">Year: ${xYear}</div>`;
+                        columns.forEach(column => {
+                            column.lines.forEach(lineConfig => {
+                                if (selectedLines.has(lineConfig.id)) {
+                                    const value = yearData[lineConfig.id];
+                                    if (value !== undefined) {
+                                        tooltipContent += `${lineConfig.name}: ${value.toFixed(2)}<br/>`;
+                                    }
+                                }
+                            });
+                        });
+
+                        tooltip
+                            .html(tooltipContent)
+                            .style('left', (event.pageX + 10) + 'px')
+                            .style('top', (event.pageY - 28) + 'px')
+                            .style('opacity', 1);
+                    }
+                })
+                .on('mouseout', function() {
+                    tooltipLine.style('opacity', 0);
+                    tooltip.style('opacity', 0);
+                });
+
+            // Create legend with larger font size
+            const legendData = [
+ 		['790410', '680110', '430120'],
+                ['640130', '560110', '430110'],
+                ['620410', '690111', '290410']
+            ];
+
+            const legendContainer = svg.append('g')
+                .attr('transform', `translate(0, ${height + 50})`);
+
+            legendData.forEach((row, rowIndex) => {
+                const legendRow = legendContainer.append('g')
+                    .attr('transform', `translate(0, ${rowIndex * 25})`);
+
+                row.forEach((ucc, i) => {
+                    const lineInfo = columns
+                        .flatMap(col => col.lines)
+                        .find(line => line.id === ucc);
+
+                    const itemWidth = width / 3;
+                    const item = legendRow.append('g')
+                        .attr('transform', `translate(${i * itemWidth + itemWidth/2}, 0)`)
+                        .style('cursor', 'pointer')
+                        .on('click', () => toggleLine(ucc));
+
+                    item.append('line')
+                        .attr('x1', -15)
+                        .attr('x2', 15)
+                        .attr('y1', 0)
+                        .attr('y2', 0)
+                        .style('stroke', lineInfo.color)
+                        .style('stroke-width', 2);
+
+                    item.append('text')
+                        .attr('x', 25)
+                        .attr('y', 4)
+                        .attr('text-anchor', 'start')
+                        .style('font-size', '19px')
+                        .text(lineInfo.name);
+                });
+            });
+        }
+
+        window.addEventListener('resize', _.debounce(() => {
+            createChart();
+        }, 250));
+
+        processData();
+    </script>
+</body>
+</html>
